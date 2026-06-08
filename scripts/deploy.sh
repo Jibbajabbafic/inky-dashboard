@@ -17,6 +17,6 @@ rsync -avz --delete \
   . "${HOST}:${REMOTE_DIR}"
 
 # Install/sync dependencies on the remote using uv
-ssh "${HOST}" "cd ${REMOTE_DIR} && ~/.local/bin/uv sync --no-dev && ~/.local/bin/uv run main.py"
+ssh "${HOST}" "cd ${REMOTE_DIR} && ~/.local/bin/uv sync --no-dev"
 
 echo "Deploy complete."
