@@ -5,5 +5,11 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "font-fredoka-one>=0.0.4",
+    "gpiod>=2.4.2",
+    "gpiodevice>=0.0.5",
     "inky",
 ]
+
+[tool.pyright]
+reportMissingModuleSource = "none"

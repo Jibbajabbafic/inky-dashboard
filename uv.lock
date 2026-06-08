@@ -3,6 +3,15 @@ revision = 3
 requires-python = ">=3.13"
 
 [[package]]
+name = "font-fredoka-one"
+version = "0.0.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/89/96/7b52a0c91f603d3d50492281c64f880f15f742520b6148dc1367b0f2e9de/font-fredoka-one-0.0.4.tar.gz", hash = "sha256:cd5fd4682f7cc79107d006793717c41bf902093c570b576b8219766052297417", size = 26243, upload-time = "2018-10-04T15:17:05.011Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/44/eb/3b8e4e23afab4da77eb4744b36db9d11d9a4e85398314483006cb53fb1bf/font_fredoka_one-0.0.4-py3-none-any.whl", hash = "sha256:f177fdb46dcb7be565a68ece3a7b353a92cf038554a037f57b6303f6a5478ff8", size = 27648, upload-time = "2018-10-04T15:16:59.172Z" },
+]
+
+[[package]]
 name = "gpiod"
 version = "2.4.2"
 source = { registry = "https://pypi.org/simple" }
@@ -51,11 +60,19 @@ name = "inky-dashboard"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "font-fredoka-one" },
+    { name = "gpiod" },
+    { name = "gpiodevice" },
     { name = "inky" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "inky" }]
+requires-dist = [
+    { name = "font-fredoka-one", specifier = ">=0.0.4" },
+    { name = "gpiod", specifier = ">=2.4.2" },
+    { name = "gpiodevice", specifier = ">=0.0.5" },
+    { name = "inky" },
+]
 
 [[package]]
 name = "numpy"
