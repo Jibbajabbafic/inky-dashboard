@@ -85,9 +85,9 @@ def draw_current_time(inky_display):
 
     inky_display.set_image(image, saturation=DISPLAY_SATURATION)
     print("Updating display...", flush=True)
-    start_time = time.time()
+    start_time = time.monotonic()
     inky_display.show()
-    duration = time.time() - start_time
+    duration = time.monotonic() - start_time
     print(f"Displayed in {duration:.2f}s", flush=True)
 
 
