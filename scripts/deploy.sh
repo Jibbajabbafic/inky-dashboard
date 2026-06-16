@@ -19,4 +19,11 @@ rsync -avz --delete \
 # Install/sync dependencies on the remote using uv
 ssh "${HOST}" "cd ${REMOTE_DIR} && ~/.local/bin/uv sync --no-dev"
 
+# Install and restart the systemd service
+scp scripts/inky-dashboard.service "${HOST}:/tmp/inky-dashboard.service"
+ssh -t "${HOST}" "sudo mv /tmp/inky-dashboard.service /etc/systemd/system/inky-dashboard.service \
+  && sudo systemctl daemon-reload \
+  && sudo systemctl enable inky-dashboard \
+  && sudo systemctl restart inky-dashboard"
+
 echo "Deploy complete."

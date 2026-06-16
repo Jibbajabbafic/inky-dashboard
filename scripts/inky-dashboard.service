@@ -1,0 +1,16 @@
+[Unit]
+Description=Inky Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=inky
+WorkingDirectory=/home/inky/src/inky-dashboard
+EnvironmentFile=/home/inky/src/inky-dashboard/.env
+ExecStart=/home/inky/.local/bin/uv run main.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
