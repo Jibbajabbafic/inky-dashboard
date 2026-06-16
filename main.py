@@ -98,7 +98,7 @@ async def _capture_ha_screenshot(
         browser = await p.chromium.launch()
         context = await browser.new_context(viewport={"width": width, "height": height})
         page = await context.new_page()
-        await page.goto(base_url)
+        await page.goto(base_url, wait_until="networkidle")
         await page.evaluate(
             """([baseUrl, token, expires]) => {
                 localStorage.setItem('hassTokens', JSON.stringify({
@@ -114,6 +114,7 @@ async def _capture_ha_screenshot(
             [base_url, token, int(time.time() * 1000) + 3600000],
         )
         await page.goto(url, wait_until="networkidle", timeout=60000)
+        await page.wait_for_selector("ha-panel-lovelace", timeout=30000)
         screenshot_bytes = await page.screenshot()
         await browser.close()
     return Image.open(io.BytesIO(screenshot_bytes))
