@@ -21,7 +21,8 @@ HA_URL = os.environ.get("HA_URL", "http://homeassistant.local:8123")
 HA_TOKEN = os.environ.get("HA_TOKEN", "")
 LED_BLINK_INTERVAL = float(os.environ.get("LED_BLINK_INTERVAL", 0.2))
 DISPLAY_SATURATION = float(os.environ.get("DISPLAY_SATURATION", 0.1))
-DISPLAY_WAIT_TIME = int(os.environ.get("DISPLAY_WAIT_TIME", 30))
+DISPLAY_WAIT_TIME = int(os.environ.get("DISPLAY_WAIT_TIME", 1800))
+DASHBOARD_SETTLE_DELAY_MS = int(os.environ.get("DASHBOARD_SETTLE_DELAY_MS", 2000))
 
 
 def main():
@@ -115,6 +116,8 @@ async def _capture_ha_screenshot(
         )
         await page.goto(url, wait_until="networkidle", timeout=60000)
         await page.wait_for_selector("ha-panel-lovelace", timeout=30000)
+        if DASHBOARD_SETTLE_DELAY_MS > 0:
+            await page.wait_for_timeout(DASHBOARD_SETTLE_DELAY_MS)
         screenshot_bytes = await page.screenshot()
         await browser.close()
     return Image.open(io.BytesIO(screenshot_bytes))
