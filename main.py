@@ -1,6 +1,7 @@
 import asyncio
 import io
 import os
+import textwrap
 import threading
 import time
 from urllib.parse import urlparse
@@ -47,7 +48,11 @@ def main():
                     daemon=True,
                 )
                 blink_thread.start()
-            display_ha_dashboard(inky_display)
+            try:
+                display_ha_dashboard(inky_display)
+            except Exception as e:
+                print(f"Error while updating display: {e}", flush=True)
+                draw_error_message(inky_display, str(e))
             if not mock:
                 stop_blink.set()
                 blink_thread.join()
@@ -96,7 +101,10 @@ async def _capture_ha_screenshot(
     parsed = urlparse(url)
     base_url = f"{parsed.scheme}://{parsed.netloc}"
     async with async_playwright() as p:
-        browser = await p.chromium.launch()
+        # Low-memory devices (e.g. Pi Zero 2 W) crash Chromium without this
+        browser = await p.chromium.launch(
+            args=["--disable-dev-shm-usage", "--disable-gpu", "--disable-extensions"]
+        )
         context = await browser.new_context(viewport={"width": width, "height": height})
         page = await context.new_page()
         await page.goto(base_url, wait_until="networkidle")
@@ -115,10 +123,10 @@ async def _capture_ha_screenshot(
             [base_url, token, int(time.time() * 1000) + 3600000],
         )
         await page.goto(url, wait_until="networkidle", timeout=60000)
-        await page.wait_for_selector("ha-panel-lovelace", timeout=30000)
+        await page.wait_for_selector("ha-panel-lovelace", timeout=60000)
         if DASHBOARD_SETTLE_DELAY_MS > 0:
             await page.wait_for_timeout(DASHBOARD_SETTLE_DELAY_MS)
-        screenshot_bytes = await page.screenshot()
+        screenshot_bytes = await page.screenshot(timeout=60000)
         await browser.close()
     return Image.open(io.BytesIO(screenshot_bytes))
 
@@ -154,6 +162,28 @@ def draw_current_time(inky_display):
     current_time = time.strftime("%H:%M:%S")
     centre_point = get_centre_point_for_text(inky_display, current_time, font)
     draw.text(centre_point, current_time, inky_display.BLACK, font)
+
+    display_image(inky_display, image)
+
+
+def draw_error_message(inky_display, message):
+    print("Rendering error message to display...", flush=True)
+    image = Image.new(
+        "P", (inky_display.width, inky_display.height), inky_display.WHITE
+    )
+    draw = ImageDraw.Draw(image)
+
+    title_font = ImageFont.truetype(FredokaOne, 36)
+    body_font = ImageFont.truetype(FredokaOne, 20)
+
+    padding = 20
+    draw.text((padding, padding), "Error", inky_display.RED, title_font)
+
+    wrapped = textwrap.wrap(message, width=60)
+    y = padding + 50
+    for line in wrapped:
+        draw.text((padding, y), line, inky_display.BLACK, body_font)
+        y += 26
 
     display_image(inky_display, image)
 
