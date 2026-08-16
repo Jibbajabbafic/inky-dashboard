@@ -105,35 +105,39 @@ async def _capture_ha_screenshot(
         browser = await p.chromium.launch(
             args=["--disable-dev-shm-usage", "--disable-gpu", "--disable-extensions"]
         )
-        context = await browser.new_context(viewport={"width": width, "height": height})
-        page = await context.new_page()
-        await page.goto(base_url, wait_until="networkidle")
-        await page.evaluate(
-            """([baseUrl, token, expires]) => {
-                localStorage.setItem('hassTokens', JSON.stringify({
-                    access_token: token,
-                    token_type: 'Bearer',
-                    expires_in: 3600,
-                    hassUrl: baseUrl,
-                    clientId: baseUrl + '/',
-                    expires: expires,
-                    refresh_token: ''
-                }));
-            }""",
-            [base_url, token, int(time.time() * 1000) + 3600000],
-        )
-        await page.goto(url, wait_until="networkidle", timeout=60000)
         try:
-            await page.wait_for_selector("ha-panel-lovelace", timeout=60000)
-        except Exception as e:
-            html = await page.content()
-            snippet = html[:500]
-            print(f"Dashboard panel failed to load, got: {snippet}", flush=True)
-            raise RuntimeError(f"{e}\n\nPage HTML:\n{snippet}") from e
-        if DASHBOARD_SETTLE_DELAY_MS > 0:
-            await page.wait_for_timeout(DASHBOARD_SETTLE_DELAY_MS)
-        screenshot_bytes = await page.screenshot(timeout=60000)
-        await browser.close()
+            context = await browser.new_context(
+                viewport={"width": width, "height": height}
+            )
+            page = await context.new_page()
+            await page.goto(base_url, wait_until="networkidle")
+            await page.evaluate(
+                """([baseUrl, token, expires]) => {
+                    localStorage.setItem('hassTokens', JSON.stringify({
+                        access_token: token,
+                        token_type: 'Bearer',
+                        expires_in: 3600,
+                        hassUrl: baseUrl,
+                        clientId: baseUrl + '/',
+                        expires: expires,
+                        refresh_token: ''
+                    }));
+                }""",
+                [base_url, token, int(time.time() * 1000) + 3600000],
+            )
+            await page.goto(url, wait_until="networkidle", timeout=60000)
+            try:
+                await page.wait_for_selector("ha-panel-lovelace", timeout=60000)
+            except Exception as e:
+                html = await page.content()
+                snippet = html[:500]
+                print(f"Dashboard panel failed to load, got: {snippet}", flush=True)
+                raise RuntimeError(f"{e}\n\nPage HTML:\n{snippet}") from e
+            if DASHBOARD_SETTLE_DELAY_MS > 0:
+                await page.wait_for_timeout(DASHBOARD_SETTLE_DELAY_MS)
+            screenshot_bytes = await page.screenshot(timeout=60000)
+        finally:
+            await browser.close()
     return Image.open(io.BytesIO(screenshot_bytes))
 
 
