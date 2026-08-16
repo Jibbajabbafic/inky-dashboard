@@ -123,7 +123,13 @@ async def _capture_ha_screenshot(
             [base_url, token, int(time.time() * 1000) + 3600000],
         )
         await page.goto(url, wait_until="networkidle", timeout=60000)
-        await page.wait_for_selector("ha-panel-lovelace", timeout=60000)
+        try:
+            await page.wait_for_selector("ha-panel-lovelace", timeout=60000)
+        except Exception as e:
+            html = await page.content()
+            snippet = html[:500]
+            print(f"Dashboard panel failed to load, got: {snippet}", flush=True)
+            raise RuntimeError(f"{e}\n\nPage HTML:\n{snippet}") from e
         if DASHBOARD_SETTLE_DELAY_MS > 0:
             await page.wait_for_timeout(DASHBOARD_SETTLE_DELAY_MS)
         screenshot_bytes = await page.screenshot(timeout=60000)
