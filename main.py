@@ -1,29 +1,28 @@
-import asyncio
 import io
 import os
 import textwrap
 import threading
 import time
-from urllib.parse import urlparse
 
 import gpiod
 import gpiodevice
+import requests
 from dotenv import load_dotenv
 from font_fredoka_one import FredokaOne
 from gpiod.line import Bias, Direction, Value
 from inky.auto import auto
 from inky.mock import InkyMockImpression
 from PIL import Image, ImageDraw, ImageFont
-from playwright.async_api import async_playwright
 
 # Configuration values
 load_dotenv()
-HA_URL = os.environ.get("HA_URL", "http://homeassistant.local:8123")
-HA_TOKEN = os.environ.get("HA_TOKEN", "")
+# Required environment variables
+IMAGE_URL = os.environ["IMAGE_URL"]
+# Optional environment variables with defaults
+IMAGE_TOKEN = os.environ.get("IMAGE_TOKEN", "")
 LED_BLINK_INTERVAL = float(os.environ.get("LED_BLINK_INTERVAL", 0.2))
 DISPLAY_SATURATION = float(os.environ.get("DISPLAY_SATURATION", 0.1))
 DISPLAY_WAIT_TIME = int(os.environ.get("DISPLAY_WAIT_TIME", 1800))
-DASHBOARD_SETTLE_DELAY_MS = int(os.environ.get("DASHBOARD_SETTLE_DELAY_MS", 2000))
 
 
 def main():
@@ -49,7 +48,7 @@ def main():
                 )
                 blink_thread.start()
             try:
-                display_ha_dashboard(inky_display)
+                display_fetched_image(inky_display)
             except Exception as e:
                 print(f"Error while updating display: {e}", flush=True)
                 draw_error_message(inky_display, str(e))
@@ -89,125 +88,31 @@ def setup_inky_led():
         return True, None, None
 
 
-def display_ha_dashboard(inky_display):
-    print("Capturing Home Assistant dashboard...", flush=True)
-    image = get_ha_screenshot(HA_URL, HA_TOKEN, inky_display.width, inky_display.height)
+def display_fetched_image(inky_display):
+    url = build_image_url(IMAGE_URL, inky_display.width, inky_display.height)
+    print(f"Fetching image from {url}...", flush=True)
+    image = fetch_image(url, IMAGE_TOKEN, inky_display.width, inky_display.height)
     display_image(inky_display, image)
 
 
-async def _capture_ha_screenshot(
-    url: str, token: str, width: int, height: int
-) -> Image.Image:
-    step_start = time.monotonic()
-    parsed = urlparse(url)
-    base_url = f"{parsed.scheme}://{parsed.netloc}"
-    print("Starting playwright...", flush=True)
-    async with async_playwright() as p:
-        print(f"Started playwright in {time.monotonic() - step_start:.2f}s", flush=True)
-        print("Starting browser...", flush=True)
-        step_start = time.monotonic()
-        # Low-memory devices (e.g. Pi Zero 2 W) crash Chromium without this
-        browser = await p.chromium.launch(
-            headless=True,
-            args=[
-                "--headless=new",  # Forces the ultra-lightweight headless engine
-                "--disable-gpu",  # Lite OS has no X11/Wayland display server active
-                "--disable-dev-shm-usage",  # Forces Chromium to use standard memory instead of /dev/shm
-                "--no-sandbox",  # Reduces process branching overhead on slow CPUs
-            ],
-        )
-        print(f"Started browser in {time.monotonic() - step_start:.2f}s", flush=True)
-        try:
-            step_start = time.monotonic()
-            context = await browser.new_context(
-                viewport={"width": width, "height": height}
-            )
-            print(
-                f"Created new context in {time.monotonic() - step_start:.2f}s",
-                flush=True,
-            )
-            step_start = time.monotonic()
-            page = await context.new_page()
-            page.on(
-                "console",
-                lambda msg: print(f"Console [{msg.type}]: {msg.text}", flush=True),
-            )
-            page.on(
-                "requestfailed",
-                lambda req: print(
-                    f"Request failed: {req.url} ({req.failure})", flush=True
-                ),
-            )
-            print(
-                f"Created new page in {time.monotonic() - step_start:.2f}s", flush=True
-            )
-            print(f"Connecting to base URL {base_url}...", flush=True)
-            step_start = time.monotonic()
-            await page.goto(base_url, wait_until="networkidle")
-            print(
-                f"Connected to base URL in {time.monotonic() - step_start:.2f}s",
-                flush=True,
-            )
-            step_start = time.monotonic()
-            await page.evaluate(
-                """([baseUrl, token, expires]) => {
-                    localStorage.setItem('hassTokens', JSON.stringify({
-                        access_token: token,
-                        token_type: 'Bearer',
-                        expires_in: 3600,
-                        hassUrl: baseUrl,
-                        clientId: baseUrl + '/',
-                        expires: expires,
-                        refresh_token: ''
-                    }));
-                }""",
-                [base_url, token, int(time.time() * 1000) + 3600000],
-            )
-            print(
-                f"Injected auth token in {time.monotonic() - step_start:.2f}s",
-                flush=True,
-            )
-            print(f"Connecting to URL {url}...", flush=True)
-            step_start = time.monotonic()
-            await page.goto(url, wait_until="networkidle")
-            print(
-                f"Connected to URL in {time.monotonic() - step_start:.2f}s", flush=True
-            )
-            try:
-                print(f"Waiting for 'ha-panel-lovelace'...", flush=True)
-                step_start = time.monotonic()
-                await page.wait_for_selector("ha-panel-lovelace", timeout=60000)
-                print(
-                    f"Found 'ha-panel-lovelace' in {time.monotonic() - step_start:.2f}s",
-                    flush=True,
-                )
-            except Exception as e:
-                debug_path = "/tmp/ha_dashboard_debug.html"
-                html = await page.content()
-                with open(debug_path, "w") as f:
-                    f.write(html)
-                snippet = html[:500]
-                print(
-                    f"Dashboard panel failed to load, dumped HTML to {debug_path}, got: {snippet}",
-                    flush=True,
-                )
-                raise RuntimeError(f"{e}\n\nPage HTML:\n{snippet}") from e
-            if DASHBOARD_SETTLE_DELAY_MS > 0:
-                print(f"Waiting for {DASHBOARD_SETTLE_DELAY_MS} ms...", flush=True)
-                await page.wait_for_timeout(DASHBOARD_SETTLE_DELAY_MS)
-            print("Taking screenshot...", flush=True)
-            step_start = time.monotonic()
-            screenshot_bytes = await page.screenshot(timeout=60000)
-            print(
-                f"Took screenshot in {time.monotonic() - step_start:.2f}s", flush=True
-            )
-        finally:
-            await browser.close()
-    return Image.open(io.BytesIO(screenshot_bytes))
+def build_image_url(base_url: str, width: int, height: int) -> str:
+    path, _, query = base_url.partition("?")
+    query = query.replace("?", "&")  # tolerate accidental extra '?' separators
+    pairs = [p for p in query.split("&") if p and not p.startswith("viewport=")]
+    pairs.append(f"viewport={width}x{height}")
+    return f"{path}?{'&'.join(pairs)}"
 
 
-def get_ha_screenshot(url: str, token: str, width: int, height: int) -> Image.Image:
-    return asyncio.run(_capture_ha_screenshot(url, token, width, height))
+def fetch_image(url: str, token: str, width: int, height: int) -> Image.Image:
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    start_time = time.monotonic()
+    response = requests.get(url, headers=headers, timeout=30)
+    response.raise_for_status()
+    print(f"Fetched image in {time.monotonic() - start_time:.2f}s", flush=True)
+    image = Image.open(io.BytesIO(response.content))
+    if image.size != (width, height):
+        image = image.resize((width, height))
+    return image
 
 
 def blink_led(gpio, led, stop_event, interval=0.5):
