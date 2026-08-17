@@ -98,19 +98,57 @@ def display_ha_dashboard(inky_display):
 async def _capture_ha_screenshot(
     url: str, token: str, width: int, height: int
 ) -> Image.Image:
+    step_start = time.monotonic()
     parsed = urlparse(url)
     base_url = f"{parsed.scheme}://{parsed.netloc}"
+    print("Starting playwright...", flush=True)
     async with async_playwright() as p:
+        print(f"Started playwright in {time.monotonic() - step_start:.2f}s", flush=True)
+        print("Starting browser...", flush=True)
+        step_start = time.monotonic()
         # Low-memory devices (e.g. Pi Zero 2 W) crash Chromium without this
         browser = await p.chromium.launch(
-            args=["--disable-dev-shm-usage", "--disable-gpu", "--disable-extensions"]
+            headless=True,
+            args=[
+                "--headless=new",  # Forces the ultra-lightweight headless engine
+                "--disable-gpu",  # Lite OS has no X11/Wayland display server active
+                "--disable-dev-shm-usage",  # Forces Chromium to use standard memory instead of /dev/shm
+                "--no-sandbox",  # Reduces process branching overhead on slow CPUs
+            ],
         )
+        print(f"Started browser in {time.monotonic() - step_start:.2f}s", flush=True)
         try:
+            step_start = time.monotonic()
             context = await browser.new_context(
                 viewport={"width": width, "height": height}
             )
+            print(
+                f"Created new context in {time.monotonic() - step_start:.2f}s",
+                flush=True,
+            )
+            step_start = time.monotonic()
             page = await context.new_page()
+            page.on(
+                "console",
+                lambda msg: print(f"Console [{msg.type}]: {msg.text}", flush=True),
+            )
+            page.on(
+                "requestfailed",
+                lambda req: print(
+                    f"Request failed: {req.url} ({req.failure})", flush=True
+                ),
+            )
+            print(
+                f"Created new page in {time.monotonic() - step_start:.2f}s", flush=True
+            )
+            print(f"Connecting to base URL {base_url}...", flush=True)
+            step_start = time.monotonic()
             await page.goto(base_url, wait_until="networkidle")
+            print(
+                f"Connected to base URL in {time.monotonic() - step_start:.2f}s",
+                flush=True,
+            )
+            step_start = time.monotonic()
             await page.evaluate(
                 """([baseUrl, token, expires]) => {
                     localStorage.setItem('hassTokens', JSON.stringify({
@@ -125,17 +163,44 @@ async def _capture_ha_screenshot(
                 }""",
                 [base_url, token, int(time.time() * 1000) + 3600000],
             )
-            await page.goto(url, wait_until="networkidle", timeout=60000)
+            print(
+                f"Injected auth token in {time.monotonic() - step_start:.2f}s",
+                flush=True,
+            )
+            print(f"Connecting to URL {url}...", flush=True)
+            step_start = time.monotonic()
+            await page.goto(url, wait_until="networkidle")
+            print(
+                f"Connected to URL in {time.monotonic() - step_start:.2f}s", flush=True
+            )
             try:
+                print(f"Waiting for 'ha-panel-lovelace'...", flush=True)
+                step_start = time.monotonic()
                 await page.wait_for_selector("ha-panel-lovelace", timeout=60000)
+                print(
+                    f"Found 'ha-panel-lovelace' in {time.monotonic() - step_start:.2f}s",
+                    flush=True,
+                )
             except Exception as e:
+                debug_path = "/tmp/ha_dashboard_debug.html"
                 html = await page.content()
+                with open(debug_path, "w") as f:
+                    f.write(html)
                 snippet = html[:500]
-                print(f"Dashboard panel failed to load, got: {snippet}", flush=True)
+                print(
+                    f"Dashboard panel failed to load, dumped HTML to {debug_path}, got: {snippet}",
+                    flush=True,
+                )
                 raise RuntimeError(f"{e}\n\nPage HTML:\n{snippet}") from e
             if DASHBOARD_SETTLE_DELAY_MS > 0:
+                print(f"Waiting for {DASHBOARD_SETTLE_DELAY_MS} ms...", flush=True)
                 await page.wait_for_timeout(DASHBOARD_SETTLE_DELAY_MS)
+            print("Taking screenshot...", flush=True)
+            step_start = time.monotonic()
             screenshot_bytes = await page.screenshot(timeout=60000)
+            print(
+                f"Took screenshot in {time.monotonic() - step_start:.2f}s", flush=True
+            )
         finally:
             await browser.close()
     return Image.open(io.BytesIO(screenshot_bytes))
