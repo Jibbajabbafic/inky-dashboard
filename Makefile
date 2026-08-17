@@ -6,13 +6,6 @@ REMOTE_DIR ?= /home/$(RPI_USER)/src/inky-dashboard
 
 setup:
 	uv sync
-	uv run playwright install-deps chromium
-	uv run playwright install chromium
-
-setup-deploy:
-	ssh "$(RPI_HOST)" "cd $(REMOTE_DIR) &&
-		~/.local/bin/uv run playwright install-deps chromium
-		~/.local/bin/uv run playwright install chromium"
 
 run:
 	uv run main.py
